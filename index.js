@@ -14,6 +14,46 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const ADDON_ID = 'org.xtremio.addon';
+const TMDB_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxOGM3OWVlYTA5MmZiN2NiODdkNTBmNTJmODI5MDYyMSIsIm5iZiI6MTc1NDk5Mjg3OS44NTUsInN1YiI6IjY4OWIxMGVmZTc4MjRlZTZhM2M2ZmRjMCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.uyS6jvNaJrVbR-THVqtMOnhLS0_SsKABISdZK8qqw7o';
+const tmdbCache = new Map();
+
+
+async function lookupImdbId(name, type) {
+    const key = `${type}:${name}`;
+    if (tmdbCache.has(key)) return tmdbCache.get(key);
+    try {
+        const endpoint = type === 'movie' ? 'movie' : 'tv';
+        const url = `https://api.themoviedb.org/3/search/${endpoint}?query=${encodeURIComponent(name)}&language=en-US&page=1`;
+        const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${TMDB_TOKEN}`, 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(4000)
+        });
+        if (!res.ok) { tmdbCache.set(key, null); return null; }
+        const data = await res.json();
+        const result = data.results && data.results[0];
+        const imdbId = result ? (result.imdb_id || await getImdbIdFromTmdb(result.id, endpoint)) : null;
+        tmdbCache.set(key, imdbId || null);
+        return imdbId || null;
+    } catch {
+        tmdbCache.set(key, null);
+        return null;
+    }
+}
+
+async function getImdbIdFromTmdb(tmdbId, endpoint) {
+    try {
+        const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids`;
+        const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${TMDB_TOKEN}`, 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(4000)
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.imdb_id || null;
+    } catch {
+        return null;
+    }
+}
 
 function getBaseUrl(req) {
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -730,12 +770,16 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             }
 
             const page = items.slice(skip, skip + PAGE_SIZE);
-            const metas = page.map(s => ({
-                id: `xtremio_movie_${s.stream_id}`,
-                type: 'XT-Movies',
-                name: cleanName(s.name),
-                poster: s.stream_icon || undefined,
-                posterShape: 'poster'
+            const metas = await Promise.all(page.map(async s => {
+                const cleanedName = cleanName(s.name);
+                const imdbId = await lookupImdbId(cleanedName, 'movie');
+                return {
+                    id: imdbId || `xtremio_movie_${s.stream_id}`,
+                    type: imdbId ? 'movie' : 'XT-Movies',
+                    name: cleanedName,
+                    poster: s.stream_icon || undefined,
+                    posterShape: 'poster'
+                };
             }));
 
             return res.json({ metas, cacheMaxAge: 300, staleRevalidate: 600 });
@@ -773,12 +817,16 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             }
 
             const page = items.slice(skip, skip + PAGE_SIZE);
-            const metas = page.map(s => ({
-                id: `xtremio_series_${s.series_id}`,
-                type: 'series',
-                name: cleanName(s.name),
-                poster: s.cover || undefined,
-                posterShape: 'poster'
+            const metas = await Promise.all(page.map(async s => {
+                const cleanedName = cleanName(s.name);
+                const imdbId = await lookupImdbId(cleanedName, 'series');
+                return {
+                    id: imdbId || `xtremio_series_${s.series_id}`,
+                    type: 'series',
+                    name: cleanedName,
+                    poster: s.cover || undefined,
+                    posterShape: 'poster'
+                };
             }));
 
             return res.json({ metas, cacheMaxAge: 300, staleRevalidate: 600 });
@@ -790,12 +838,16 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const allMovies = await getAllVodStreams(cfg);
             const filtered = allMovies.filter(s => s.name?.toLowerCase().includes(q));
             const page = filtered.slice(skip, skip + PAGE_SIZE);
-            const metas = page.map(s => ({
-                id: `xtremio_movie_${s.stream_id}`,
-                type: 'XT-Movies',
-                name: cleanName(s.name),
-                poster: s.stream_icon || undefined,
-                posterShape: 'poster'
+            const metas = await Promise.all(page.map(async s => {
+                const cleanedName = cleanName(s.name);
+                const imdbId = await lookupImdbId(cleanedName, 'movie');
+                return {
+                    id: imdbId || `xtremio_movie_${s.stream_id}`,
+                    type: imdbId ? 'movie' : 'XT-Movies',
+                    name: cleanedName,
+                    poster: s.stream_icon || undefined,
+                    posterShape: 'poster'
+                };
             }));
             return res.json({ metas, cacheMaxAge: 300, staleRevalidate: 600 });
         }
@@ -805,12 +857,16 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const allSeries = await getAllSeriesStreams(cfg);
             const filtered = allSeries.filter(s => s.name?.toLowerCase().includes(q));
             const page = filtered.slice(skip, skip + PAGE_SIZE);
-            const metas = page.map(s => ({
-                id: `xtremio_series_${s.series_id}`,
-                type: 'series',
-                name: cleanName(s.name),
-                poster: s.cover || undefined,
-                posterShape: 'poster'
+            const metas = await Promise.all(page.map(async s => {
+                const cleanedName = cleanName(s.name);
+                const imdbId = await lookupImdbId(cleanedName, 'series');
+                return {
+                    id: imdbId || `xtremio_series_${s.series_id}`,
+                    type: 'series',
+                    name: cleanedName,
+                    poster: s.cover || undefined,
+                    posterShape: 'poster'
+                };
             }));
             return res.json({ metas, cacheMaxAge: 300, staleRevalidate: 600 });
         }
