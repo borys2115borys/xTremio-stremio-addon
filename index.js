@@ -51,9 +51,12 @@ async function getManifest(baseUrl = `http://localhost:${PORT}`, cfg = null) {
     if (cfg) {
         try {
             const cats = await getCategories(cfg);
-            const movieGenres = [...new Set(cats.movies.map(c => c.category_name).filter(Boolean))];
-            const seriesGenres = [...new Set(cats.series.map(c => c.category_name).filter(Boolean))];
-            const liveGenres = [...new Set(cats.live.map(c => c.category_name).filter(Boolean))];
+            const allowedPrefixes = ['|PL|', '|EN|', '|MULTI|', 'PL|', 'EN|'];
+            const filterGenres = (genres) => genres.filter(g => allowedPrefixes.some(p => g.startsWith(p)));
+
+            const movieGenres = filterGenres([...new Set(cats.movies.map(c => c.category_name).filter(Boolean))]);
+            const seriesGenres = filterGenres([...new Set(cats.series.map(c => c.category_name).filter(Boolean))]);
+            const liveGenres = filterGenres([...new Set(cats.live.map(c => c.category_name).filter(Boolean))]);
 
             catalogs.push(
                 {
