@@ -25,6 +25,14 @@ function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+function cleanName(name) {
+    if (!name) return name;
+    return name
+        .replace(/^\|[A-Z0-9]{1,6}\|\s*/g, "")
+        .replace(/^[A-Z]{2,6}\s*[-u2013|]\s*/g, "")
+        .trim();
+}
+
 function encodeConfig(cfg) {
     return Buffer.from(JSON.stringify({
         serverUrl: cfg.serverUrl,
@@ -52,11 +60,12 @@ async function getManifest(baseUrl = `http://localhost:${PORT}`, cfg = null) {
         try {
             const cats = await getCategories(cfg);
             const allowedPrefixes = ['|PL|', '|EN|', '|MULTI|', 'PL|', 'EN|'];
+            const liveAllowedPrefixes = ['PL|'];
             const filterGenres = (genres) => genres.filter(g => allowedPrefixes.some(p => g.startsWith(p)));
 
             const movieGenres = filterGenres([...new Set(cats.movies.map(c => c.category_name).filter(Boolean))]);
             const seriesGenres = filterGenres([...new Set(cats.series.map(c => c.category_name).filter(Boolean))]);
-            const liveGenres = filterGenres([...new Set(cats.live.map(c => c.category_name).filter(Boolean))]);
+            const liveGenres = [...new Set(cats.live.map(c => c.category_name).filter(Boolean))].filter(g => liveAllowedPrefixes.some(p => g.startsWith(p)));
 
             catalogs.push(
                 {
@@ -680,7 +689,7 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const metas = page.map(s => ({
                 id: `xtremio_live_${s.stream_id}`,
                 type: 'Live TV',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.stream_icon || undefined,
                 posterShape: 'square'
             }));
@@ -724,7 +733,7 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const metas = page.map(s => ({
                 id: `xtremio_movie_${s.stream_id}`,
                 type: 'XT-Movies',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.stream_icon || undefined,
                 posterShape: 'poster'
             }));
@@ -767,7 +776,7 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const metas = page.map(s => ({
                 id: `xtremio_series_${s.series_id}`,
                 type: 'series',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.cover || undefined,
                 posterShape: 'poster'
             }));
@@ -784,7 +793,7 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const metas = page.map(s => ({
                 id: `xtremio_movie_${s.stream_id}`,
                 type: 'XT-Movies',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.stream_icon || undefined,
                 posterShape: 'poster'
             }));
@@ -799,7 +808,7 @@ app.get(['/:config/catalog/:type/:id.json', '/:config/catalog/:type/:id/:extra.j
             const metas = page.map(s => ({
                 id: `xtremio_series_${s.series_id}`,
                 type: 'series',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.cover || undefined,
                 posterShape: 'poster'
             }));
@@ -829,7 +838,7 @@ app.get('/:config/meta/:type/:id.json', async (req, res) => {
             const meta = {
                 id: `xtremio_live_${s.stream_id}`,
                 type: 'Live TV',
-                name: s.name,
+                name: cleanName(s.name),
                 poster: s.stream_icon || undefined,
                 posterShape: 'square',
                 genres: s.category_name ? [s.category_name] : [],
@@ -848,7 +857,7 @@ app.get('/:config/meta/:type/:id.json', async (req, res) => {
             const meta = {
                 id: `xtremio_movie_${streamId}`,
                 type: 'XT-Movies',
-                name: movie.name || movie.o_name || 'Unknown',
+                name: cleanName(movie.name || movie.o_name) || 'Unknown',
                 poster: movie.cover_big || movie.movie_image || undefined,
                 posterShape: 'poster',
                 background: backdrop,
@@ -906,7 +915,7 @@ app.get('/:config/meta/:type/:id.json', async (req, res) => {
             const meta = {
                 id: `xtremio_series_${seriesId}`,
                 type: 'series',
-                name: series.name || 'Unknown',
+                name: cleanName(series.name) || 'Unknown',
                 poster: series.cover || undefined,
                 posterShape: 'poster',
                 background: backdrop,
