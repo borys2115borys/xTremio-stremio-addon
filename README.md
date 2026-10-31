@@ -105,3 +105,6 @@ Plain Node.js HTTP server with no persistence. Works on any platform that can ru
 ## License
 
 Source is publicly viewable but **not licensed for use without permission**. See [`LICENSE`](./LICENSE).
+## Polityka niezależnego review (2026-10-31)
+
+Niezależny review drugiego agenta nie jest obowiązkowy i nie blokuje PR. Decyzja właściciela i wyjątki (testy, wymagania GitHub, dane/produkcja) są opisane w [REVIEW_POLICY.md](REVIEW_POLICY.md).
